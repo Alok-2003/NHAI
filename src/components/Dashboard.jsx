@@ -11,6 +11,7 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import mapboxgl from "mapbox-gl";
+import Hls from "hls.js";
 import "mapbox-gl/dist/mapbox-gl.css";
 import Papa from "papaparse";
 
@@ -56,6 +57,28 @@ const Dashboard = () => {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const videoRef = useRef(null);
+  // Attach HLS stream when component mounts
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    const playlistUrl = "/L2.m3u8"; // generated HLS playlist placed in public folder
+
+    if (Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(playlistUrl);
+      hls.attachMedia(videoEl);
+      hls.on(Hls.Events.ERROR, (evt, data) => {
+        console.error("HLS error", data);
+      });
+      return () => hls.destroy();
+    } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+      // Safari / iOS native HLS support
+      videoEl.src = playlistUrl;
+    } else {
+      console.error("HLS not supported in this browser");
+    }
+  }, []);
   const animationFrameRef = useRef(null);
   const markerRef = useRef(null);
   const playbackIntervalRef = useRef(null);
@@ -88,6 +111,7 @@ const Dashboard = () => {
                 const RUTTING_L2_IDX = 49; // rut depth for L2 lane
                 const CRACKING_L2_IDX = 57; // cracking area L2 (approx)
                 const RAVELLING_L2_IDX = 66; // ravelling area L2 (approx)
+                console.log("Row:", row);
 
                 const startLat = parseFloat(row[L2_START_LAT_IDX]);
                 const startLng = parseFloat(row[L2_START_LNG_IDX]);
@@ -419,9 +443,11 @@ const Dashboard = () => {
             <div className="bg-black h-96 flex items-center justify-center">
               <video
                 ref={videoRef}
-                src="/L2.mp4"
+                /* src is set dynamically by HLS script */
                 className="h-full w-full object-contain"
-                preload="metadata"
+                // controls
+                 autoPlay
+                 muted
                 onError={(e) => {
                   console.error("Video error:", e);
                 }}
