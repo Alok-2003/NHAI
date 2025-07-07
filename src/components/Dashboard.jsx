@@ -107,10 +107,10 @@ const Dashboard = () => {
                 const L2_START_LNG_IDX = 10; // L2 start longitude
                 const L2_END_LAT_IDX = 11; // L2 end latitude
                 const L2_END_LNG_IDX = 12; // L2 end longitude
-                const ROUGHNESS_L2_IDX = 35; // roughness value for L2 lane
+                const ROUGHNESS_L2_IDX = 40; // roughness value for L2 lane
                 const RUTTING_L2_IDX = 49; // rut depth for L2 lane
-                const CRACKING_L2_IDX = 57; // cracking area L2 (approx)
-                const RAVELLING_L2_IDX = 66; // ravelling area L2 (approx)
+                const CRACKING_L2_IDX = 58; // cracking area L2 (corrected)
+                const RAVELLING_L2_IDX = 67; // ravelling area L2 (corrected)
                 console.log("Row:", row);
 
                 const startLat = parseFloat(row[L2_START_LAT_IDX]);
@@ -312,19 +312,31 @@ const Dashboard = () => {
     labels: visibleSurveyData.map((item) => item.startChainage),
     datasets: [
       {
-        label: "Mean Condition Index (L2)",
-        data: visibleSurveyData.map((item) => {
-          const rough = item.roughness.L2 || 0;
-          const rut = item.rutting.L2 || 0;
-          const crack = item.cracking.L2 || 0;
-          const rav = item.ravelling.L2 || 0;
-          return (rough + rut + crack + rav) / 4;
-        }),
-        borderColor: "#38bdf8",
+        label: "Rutting (mm)",
+        data: visibleSurveyData.map((item) => item.rutting.L2 || 0),
+        borderColor: "#f59e42",
+        backgroundColor: "rgba(245, 158, 66, 0.2)",
         borderWidth: 2,
-        backgroundColor: "rgba(56, 189, 248, 0.4)",
         tension: 0.4,
-        fill: true,
+        fill: false,
+      },
+      {
+        label: "Cracking (%)(x10 for scale)",
+        data: visibleSurveyData.map((item) => (item.cracking.L2 || 0) * 10),
+        borderColor: "#ef4444",
+        backgroundColor: "rgba(239, 68, 68, 0.2)",
+        borderWidth: 2,
+        tension: 0.4,
+        fill: false,
+      },
+      {
+        label: "Ravelling (%) (x10 for scale)",
+        data: visibleSurveyData.map((item) => (item.ravelling.L2 || 0) * 10),
+        borderColor: "#10b981",
+        backgroundColor: "rgba(16, 185, 129, 0.2)",
+        borderWidth: 2,
+        tension: 0.4,
+        fill: false,
       },
     ],
   };
@@ -335,22 +347,11 @@ const Dashboard = () => {
     maintainAspectRatio: false,
     scales: {
       y: {
-        beginAtZero: false,
-        min: 0,
-        max: 10,
-        grid: {
-          color: "rgba(255, 255, 255, 0.1)",
-        },
-        ticks: {
-          color: "rgba(255, 255, 255, 0.8)",
-        },
-      },
-      x: {
-        grid: {
-          color: "rgba(255, 255, 255, 0.1)",
-        },
-        ticks: {
-          color: "rgba(255, 255, 255, 0.8)",
+        beginAtZero: true,
+        max: 6,
+        title: {
+          display: true,
+          text: "Common Scale (Rutting mm, Cracking %, Ravelling % x5)",
         },
       },
     },
@@ -392,8 +393,7 @@ const Dashboard = () => {
 
   // Helper function to determine row background color based on roughness
   const getRowClass = (roughness) => {
-    if (roughness < 1800) return "bg-green-500 bg-opacity-50";
-    if (roughness < 2500) return "bg-yellow-500 bg-opacity-50";
+    if (roughness < 2400) return "bg-green-500 bg-opacity-50";
     return "bg-red-500 bg-opacity-50";
   };
 
@@ -426,157 +426,175 @@ const Dashboard = () => {
           </svg>
         </div>
       </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
-        {/* Left Column */}
-        <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-          {/* Map */}
-          <div ref={mapContainer} className="h-96 w-full"></div>
-        </div>
-
-        {/* Right Column */}
-        <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-          {/* Survey Info */}
-
-          {/* Video Player */}
-          <div className="relative">
-            <div className="bg-black h-96 flex items-center justify-center">
-              <video
-                ref={videoRef}
-                /* src is set dynamically by HLS script */
-                className="h-full w-full object-contain"
-                // controls
-                 autoPlay
-                 muted
-                onError={(e) => {
-                  console.error("Video error:", e);
-                }}
-              />
-            </div>
-            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 p-2 flex items-center">
-              <button onClick={togglePlay} className="text-white mr-2">
-                {isPlaying ? (
-                  <span className="w-6 h-6 flex items-center justify-center">
-                    ⏸
-                  </span>
-                ) : (
-                  <span className="w-6 h-6 flex items-center justify-center">
-                    ▶️
-                  </span>
-                )}
-              </button>
-              <button
-                className="text-white mr-2"
-                onClick={() => {
-                  if (videoRef.current) {
-                    videoRef.current.currentTime = videoRef.current.duration;
-                  }
-                }}
-              >
-                <span className="w-6 h-6 flex items-center justify-center">
-                  ⏭
-                </span>
-              </button>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={progress}
-                onChange={handleProgressChange}
-                className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="flex -gap-2">
-        {/* Data Table */}
-        <div className="p-4 w-2/3">
+      <div className="flex justify-between">
+      <div className="w-full py-4 space-y-4" >
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4  px-4">
+          {/* Left Column */}
           <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-            <table className="min-w-full divide-y divide-gray-700">
-              <thead className="bg-gray-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Chainage
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Lane
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Roughness (mm/km)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Rutting (mm)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Cracking (% area)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Ravelling (% area)
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
-                {visibleSurveyData.map((item, index) => (
-                  <tr
-                    key={index}
-                    className={
-                      currentChainage === item.startChainage
-                        ? "bg-blue-900 bg-opacity-30"
-                        : ""
-                    }
-                  >
-                    <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-300">
-                      {item.startChainage}
-                    </td>
-                    <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-300">
-                      L2
-                    </td>
-                    <td
-                      className={`px-6 py-2 whitespace-nowrap text-sm text-white ${getRowClass(
-                        item.roughness.L2
-                      )}`}
-                    >
-                      {item.roughness.L2}
-                    </td>
-                    <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-300">
-                      {item.rutting.L2.toFixed(1)}
-                    </td>
-                    <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-300">
-                      {typeof item.cracking.L2 === "number"
-                        ? item.cracking.L2.toFixed(1)
-                        : "0.0"}
-                      %
-                    </td>
-                    <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-300">
-                      {typeof item.ravelling.L2 === "number"
-                        ? item.ravelling.L2.toFixed(1)
-                        : "0.0"}
-                      %
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Map */}
+            <div ref={mapContainer} className="h-96 w-full"></div>
+          </div>
+          {/* Roughness Chart */}
+          <div className="p- w- h-full">
+            <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg p-4">
+              <h2 className="text-xl font-bold mb-4">
+                Roughness <span className="text-sm">(mm/km)</span>
+              </h2>
+              <div className="h-77 w-full">
+                <Line
+                  key={visibleSurveyData[0]?.startChainage || "chart"}
+                  data={chartData}
+                  options={chartOptions}
+                />
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Roughness Chart */}
-        <div className="p-4 w-1/3 h-full">
-          <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg p-4">
-            <h2 className="text-xl font-bold mb-4">
-              Roughness <span className="text-sm">(mm/km)</span>
-            </h2>
-            <div className="h-56 w-full">
-              <Line
-                key={visibleSurveyData[0]?.startChainage || "chart"}
-                data={chartData}
-                options={chartOptions}
-              />
+        <div className="">
+          {/* Data Table */}
+          <div className="px-4 w-">
+            <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
+              <table className="min-w-full divide-y divide-gray-700">
+                <thead className="bg-gray-700">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Chainage
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Lane
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Roughness (mm/km)
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Rutting (mm)
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Cracking (% area)
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Ravelling (% area)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {visibleSurveyData.map((item, index) => (
+                    <tr
+                      key={index}
+                      className={
+                        currentChainage === item.startChainage
+                          ? "bg-blue-900 bg-opacity-30"
+                          : ""
+                      }
+                    >
+                      <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-300">
+                        {item.startChainage}
+                      </td>
+                      <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-300">
+                        L2
+                      </td>
+                      <td
+                        className={`px-6 py-2 whitespace-nowrap text-sm text-white ${getRowClass(
+                          item.roughness.L2
+                        )}`}
+                      >
+                        {item.roughness.L2}
+                      </td>
+                      <td
+                        className={`px-6 py-2 whitespace-nowrap text-sm ${
+                          item.rutting.L2 >= 5
+                            ? "bg-red-600 text-white"
+                            : "text-gray-300"
+                        }`}
+                      >
+                        {item.rutting.L2.toFixed(2)}
+                      </td>
+                      <td
+                        className={`px-6 py-2 whitespace-nowrap text-sm ${
+                          item.cracking.L2 >= 5
+                            ? "bg-red-600 text-white"
+                            : "text-gray-300"
+                        }`}
+                      >
+                        {typeof item.cracking.L2 === "number"
+                          ? item.cracking.L2.toFixed(3)
+                          : "0.000"}
+                        %
+                      </td>
+                      <td
+                        className={`px-6 py-2 whitespace-nowrap text-sm ${
+                          item.ravelling.L2 >= 1
+                            ? "bg-red-600 text-white"
+                            : "text-gray-300"
+                        }`}
+                      >
+                        {typeof item.ravelling.L2 === "number"
+                          ? item.ravelling.L2.toFixed(3)
+                          : "0.000"}
+                        %
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       </div>
+
+      <div className="h-[120%] w-[62%] overflow-hidden shadow-lg pt-4 pr-4 pb-0">
+        {/* Video Player */}
+        <div className="relative h-[120%] ">
+          <div className="bg-black h-full w-full flex items-center justify-center">
+            <video
+              ref={videoRef}
+              /* src is set dynamically by HLS script */
+              className="h-[120%] w-full object-contain"
+              // controls
+              //  autoPlay
+              muted
+              onError={(e) => {
+                console.error("Video error:", e);
+              }}
+            />
+          </div>
+          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 p-2 flex items-center">
+            <button onClick={togglePlay} className="text-white mr-2">
+              {isPlaying ? (
+                <span className="w-6 h-6 flex items-center justify-center">
+                  ⏸
+                </span>
+              ) : (
+                <span className="w-6 h-6 flex items-center justify-center">
+                  ▶️
+                </span>
+              )}
+            </button>
+            <button
+              className="text-white mr-2"
+              onClick={() => {
+                if (videoRef.current) {
+                  videoRef.current.currentTime = videoRef.current.duration;
+                }
+              }}
+            >
+              <span className="w-6 h-6 flex items-center justify-center">
+                ⏭
+              </span>
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={progress}
+              onChange={handleProgressChange}
+              className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+        </div>
+      </div>
+      </div>
+
     </div>
   );
 };
