@@ -13,6 +13,7 @@ mapboxgl.accessToken = 'pk.eyJ1IjoiYWxvazIwMDMiLCJhIjoiY201anNwZXRnMTAzbzJpc2Zta
 const RoadMap = () => {
   const mapContainer = useRef(null);
   const map = useRef(null);
+  const popupRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [totalSegments, setTotalSegments] = useState(0);
@@ -133,6 +134,8 @@ const RoadMap = () => {
         const laneSums = Array(8).fill(0);
         const laneCounts = Array(8).fill(0);
         let good = 0, warning = 0, exceed = 0, maintenance = 0;
+        // Collect features per status for efficient rendering
+        const statusFeatures = { good: [], warning: [], exceed: [], maintenance: [] };
         
         // Skip header rows
         const dataRows = rows.slice(2);
@@ -201,7 +204,21 @@ const RoadMap = () => {
               [coords.endLng, coords.endLat]
             ];
             
-            const lineId = drawLine(coordinates, color, dashArray);
+            // Instead of drawing immediately, accumulate the feature for batch rendering later
+            statusFeatures[(isMaintenance ? 'maintenance' : roughnessValue > roughnessLimit ? 'exceed' : roughnessValue > roughnessLimit * 0.8 ? 'warning' : 'good')].push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates },
+              properties: {
+                nhNumber: roadInfo.nhNumber || '',
+                startChainage: roadInfo.startChainage,
+                endChainage: roadInfo.endChainage,
+                lane: laneName,
+                roughnessValue,
+                roughnessLimit,
+                status: isMaintenance ? 'Under Maintenance' : roughnessValue > roughnessLimit ? 'Exceeds Limit' : roughnessValue > roughnessLimit * 0.8 ? 'Warning' : 'Good'
+              }
+            });
+            const lineId = null; // placeholder to keep existing popup condition false
             
             // Add popup
             if (map.current && lineId) {
@@ -229,6 +246,62 @@ const RoadMap = () => {
             }
           });
         });
+
+        // Add aggregated GeoJSON sources & layers for performance
+        const addStatusLayer = (key, features, color, dashArray) => {
+          if (!map.current || features.length === 0) return;
+          const sourceId = key + '-source';
+          if (map.current.getSource(sourceId)) {
+            map.current.getSource(sourceId).setData({ type: 'FeatureCollection', features });
+          } else {
+            map.current.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+            map.current.addLayer({
+              id: key + '-layer',
+              type: 'line',
+              source: sourceId,
+              paint: {
+                'line-color': color,
+                'line-width': 3,
+                'line-dasharray': dashArray
+              }
+            });
+            // Popup interaction
+            // use global popupRef instead of per-layer popup instance
+            map.current.on('mouseenter', key + '-layer', (e) => {
+              // Remove any existing popup first
+              if (popupRef.current) {
+                popupRef.current.remove();
+                popupRef.current = null;
+              }
+              map.current.getCanvas().style.cursor = 'pointer';
+              const f = e.features?.[0];
+              if (!f) return;
+              const p = f.properties;
+              popupRef.current = new mapboxgl.Popup({ offset: 25, closeButton: false, closeOnClick: false })
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                  <b>NH Number:</b> ${p.nhNumber}<br>
+                  <b>Chainage:</b> ${p.startChainage} - ${p.endChainage}<br>
+                  <b>Lane:</b> ${p.lane}<br>
+                  <b>Roughness:</b> ${p.roughnessValue} mm/km (Limit: ${p.roughnessLimit} mm/km)<br>
+                  <b>Status:</b> ${p.status}
+                `)
+                .addTo(map.current);
+            });
+            map.current.on('mouseleave', key + '-layer', () => {
+              if (popupRef.current) {
+                popupRef.current.remove();
+                popupRef.current = null;
+              }
+              map.current.getCanvas().style.cursor = '';
+            });
+          }
+        };
+
+        addStatusLayer('good', statusFeatures.good, '#22c55e', [1, 0]);
+        addStatusLayer('warning', statusFeatures.warning, '#f97316', [1, 0]);
+        addStatusLayer('exceed', statusFeatures.exceed, '#ef4444', [5, 10]);
+        addStatusLayer('maintenance', statusFeatures.maintenance, '#eab308', [4, 4]);
 
         // compute averages and analytics
         const avgValues = laneSums.map((sum, idx) => laneCounts[idx] ? +(sum / laneCounts[idx]).toFixed(2) : 0);
@@ -286,7 +359,7 @@ const RoadMap = () => {
           {/* Legend */}
           <div className="bg-white p-4 rounded-lg shadow-lg mt-4">
             <h2 className="text-lg font-semibold mb-3 text-gray-700">Legend</h2>
-            <div className="flex flex-wrap gap-6">
+            <div className="flex flex-wrap gap-3">
               <div className="flex items-center">
                 <span className="inline-block w-8 h-2 bg-green-500 mr-2 rounded-sm"></span>
                 <span className="text-gray-700">Good condition</span>
@@ -308,9 +381,9 @@ const RoadMap = () => {
         </div>
 
         {/* Analysis Panel (65% width) */}
-        <div className="w-[65%] grid grid-cols-2 gap-4 space-y-6">
+        <div className="w-[65%] grid grid-cols-2 gap-4 ">
           {/* Statistics Cards */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-6">
             <div className="bg-white p-4 rounded-lg shadow-lg">
               <h3 className="text-sm font-medium text-gray-500 uppercase">Total Segments</h3>
               <p className="text-2xl font-bold text-gray-800">{totalSegments}</p>
@@ -362,15 +435,15 @@ const RoadMap = () => {
           {/* Analytics Charts */}
           <div className="grid grid-cols-1 gap-4">
             {barData && (
-              <div className="bg-white p-4 rounded-lg shadow-lg">
+              <div className="bg-white h-full p-4 rounded-lg shadow-lg">
                 <h2 className="text-lg font-semibold mb-3 text-gray-700">Average Roughness per Lane</h2>
                 <Bar data={barData} />
               </div>
             )}
             {pieData && (
-              <div className="bg-white p-4 flex flex-col item rounded-lg shadow-lg">
+              <div className="bg-white p-4 h-full rounded-lg shadow-lg">
                 <h2 className="text-lg font-semibold mb-3 text-gray-700">Lane Condition Distribution</h2>
-                <div className="w-full h-full">
+                <div className="w-full h-72 flex justify-center items-center mb-10">
                   <Doughnut options={{ responsive: true }} data={pieData} />
                 </div>
               </div>
