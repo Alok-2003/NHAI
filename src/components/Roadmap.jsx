@@ -5,6 +5,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 // Charts
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from "chart.js";
 import { Bar, Doughnut } from "react-chartjs-2";
+import { Link } from "react-router-dom";
 ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
 // Set your Mapbox access token here
@@ -345,6 +346,11 @@ const RoadMap = () => {
           <h1 className="text-3xl font-bold tracking-wide">
             NHAI Road Condition Dashboard
           </h1>
+          <Link to="/dashboard">
+            <button className="bg-blue-700 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+              View Dashboard
+            </button>
+          </Link>
         </div>
       </header>
 
