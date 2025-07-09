@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
+import ReportDialog from './ReportDialog';
+import ReportButton from './ReportButton';
+import { generateReport } from './ReportGenerator';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -10,6 +13,10 @@ import {
   Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import annotationPlugin from 'chartjs-plugin-annotation';
+ChartJS.register(annotationPlugin);
+
+// Register annotation plugin
 import mapboxgl from "mapbox-gl";
 import Hls from "hls.js";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -31,6 +38,8 @@ mapboxgl.accessToken =
   "pk.eyJ1IjoiYWxvazIwMDMiLCJhIjoiY201anNwZXRnMTAzbzJpc2ZtaHhudG1kNiJ9.3y0a5jiMDl42FUAN-Wy1Fg";
 
 const Dashboard = () => {
+  // Dialog state for report
+  const [reportOpen, setReportOpen] = useState(false);
   // State for CSV data
   const [allSurveyData, setAllSurveyData] = useState([]);
   const [visibleSurveyData, setVisibleSurveyData] = useState([]);
@@ -312,6 +321,15 @@ const Dashboard = () => {
     labels: visibleSurveyData.map((item) => item.startChainage),
     datasets: [
       {
+        label: "Roughness (scaled: /1000)",
+        data: visibleSurveyData.map((item) => (item.roughness.L2 || 0) / 1000),
+        borderColor: "#6366f1",
+        backgroundColor: "rgba(99, 102, 241, 0.2)",
+        borderWidth: 2,
+        tension: 0.4,
+        fill: false,
+      },
+      {
         label: "Rutting (mm)",
         data: visibleSurveyData.map((item) => item.rutting.L2 || 0),
         borderColor: "#f59e42",
@@ -340,29 +358,102 @@ const Dashboard = () => {
       },
     ],
   };
-  console.log("Chart data:", chartData);
 
   const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      y: {
-        beginAtZero: true,
-        max: 6,
-        title: {
-          display: true,
-          text: "Common Scale (Rutting mm, Cracking %, Ravelling % x5)",
+  responsive: true,
+  maintainAspectRatio: false,
+  scales: {
+    y: {
+      beginAtZero: true,
+      max: 6,
+      title: {
+        display: true,
+        text: "Common Scale (Rutting mm, Cracking %, Ravelling % x5)",
+      },
+    },
+  },
+  plugins: {
+    legend: {
+      labels: {
+        color: "rgba(255, 255, 255, 0.8)",
+      },
+    },
+    annotation: {
+      annotations: {
+        currentValueLine: currentChainage !== null ? {
+          type: 'line',
+          xMin: currentChainage,
+          xMax: currentChainage,
+          borderColor: 'white',
+          borderWidth: 2,
+          label: {
+            content: 'Current',
+            enabled: true,
+            position: 'start',
+            color: 'white',
+          },
+        } : undefined,
+        roughnessLimit: {
+          type: 'line',
+          yMin: 2.4,
+          yMax: 2.4,
+          borderColor: '#6366f1',
+          borderWidth: 2,
+          borderDash: [6, 6],
+          label: {
+            content: 'Roughness Limit',
+            enabled: true,
+            position: 'end',
+            color: 'red',
+          },
+        },
+        ruttingLimit: {
+          type: 'line',
+          yMin: 5,
+          yMax: 5,
+          borderColor: 'orange',
+          borderWidth: 2,
+          borderDash: [6, 6],
+          label: {
+            content: 'Rutting Limit',
+            enabled: true,
+            position: 'end',
+            color: 'orange',
+          },
+        },
+        crackingLimit: {
+          type: 'line',
+          yMin: 1,
+          yMax: 1,
+          borderColor: 'red',
+          borderWidth: 2,
+          borderDash: [3, 3],
+          label: {
+            content: 'Cracking Limit',
+            enabled: true,
+            position: 'end',
+            color: 'red',
+          },
+        },
+        ravellingLimit: {
+          type: 'line',
+          yMin: 1,
+          yMax: 1,
+          borderColor: 'green',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          label: {
+            content: 'Ravelling Limit',
+            enabled: true,
+            position: 'end',
+            color: 'green',
+          },
         },
       },
     },
-    plugins: {
-      legend: {
-        labels: {
-          color: "rgba(255, 255, 255, 0.8)",
-        },
-      },
-    },
-  };
+  },
+};
+
 
   // Video playback controls
   const togglePlay = () => {
@@ -404,27 +495,14 @@ const Dashboard = () => {
           NSV Survey Dashboard -{" "}
           {currentChainage ? `Chainage: ${currentChainage}` : "Loading..."}
         </h1>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search Survey ID / Date"
-            className="bg-gray-700 px-4 py-2 rounded-lg text-white w-64"
-          />
-          <svg
-            className="w-5 h-5 absolute right-3 top-2.5 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            ></path>
-          </svg>
-        </div>
+        <div className="flex justify-end ">
+                <ReportButton onClick={() => setReportOpen(true)} />
+              </div>
+              <ReportDialog
+                open={reportOpen}
+                onClose={() => setReportOpen(false)}
+                report={<div dangerouslySetInnerHTML={{ __html: generateReport(allSurveyData) }} />}
+              />
       </header>
       <div className="flex justify-between">
       <div className="w-full py-4 space-y-4" >
@@ -436,16 +514,18 @@ const Dashboard = () => {
           </div>
           {/* Roughness Chart */}
           <div className="p- w- h-full">
-            <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg p-4">
-              <h2 className="text-xl font-bold mb-4">
-                Roughness <span className="text-sm">(mm/km)</span>
-              </h2>
-              <div className="h-77 w-full">
-                <Line
-                  key={visibleSurveyData[0]?.startChainage || "chart"}
-                  data={chartData}
-                  options={chartOptions}
-                />
+            <div className="container mx-auto">
+              {/* Top bar for report button */}
+              
+              <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg p-4">
+                
+                <div className="h-88 w-full">
+                  <Line
+                    key={visibleSurveyData[0]?.startChainage || "chart"}
+                    data={chartData}
+                    options={chartOptions}
+                  />
+                </div>
               </div>
             </div>
           </div>
