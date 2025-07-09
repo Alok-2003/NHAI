@@ -163,6 +163,9 @@ const Dashboard = () => {
             setAllSurveyData(processedData);
             setVisibleSurveyData(processedData.slice(0, 7));
 
+            // Make all L2 segments globally available for map condition markers
+            window.allL2Segments = processedData;
+
             // Extract road coordinates for the map
             const coords = [];
             processedData.forEach((item) => {
@@ -202,7 +205,7 @@ const Dashboard = () => {
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/streets-v11",
+      style: "mapbox://styles/mapbox/satellite-v9",
       center: [centerLng, centerLat],
       zoom: 14,
     });
@@ -212,8 +215,8 @@ const Dashboard = () => {
 
     // Add road segments when map loads
     map.current.on("load", () => {
-      // Add road source
-      map.current.addSource("road", {
+      // Add road source (L2 lane as detailed track)
+      map.current.addSource("road-l2", {
         type: "geojson",
         data: {
           type: "Feature",
@@ -225,25 +228,66 @@ const Dashboard = () => {
         },
       });
 
-      // Add road layer
+      // Add detailed L2 lane line (highlighted)
       map.current.addLayer({
-        id: "road-line",
+        id: "road-l2-line",
         type: "line",
-        source: "road",
+        source: "road-l2",
         layout: {
           "line-join": "round",
           "line-cap": "round",
         },
         paint: {
-          "line-color": "#22c55e",
-          "line-width": 8,
-          "line-offset": 0,
+          "line-color": "#ffec3d", // Highlighted yellow
+          "line-width": 10,
+          "line-opacity": 0.85,
         },
       });
 
-      // Add a marker for current position
+      // Draw each L2 segment as a colored line by condition
+      const roughnessLimit = 2400;
+      if (Array.isArray(window.allL2Segments)) {
+        window.allL2Segments.forEach((seg, idx) => {
+          const { start, end } = seg.coordinates.L2;
+          if (!start || !end) return;
+          const roughness = seg.roughness?.L2 || 0;
+          let color = "#22c55e"; // green
+          if (seg.status === 'maintenance') {
+            color = "#fde047"; // yellow
+          } else if (roughness >= roughnessLimit) {
+            color = "#ef4444"; // red
+          } else if (roughness >= 0.8 * roughnessLimit) {
+            color = "#f59e42"; // orange
+          }
+          map.current.addLayer({
+            id: `l2-segment-${idx}`,
+            type: "line",
+            source: {
+              type: "geojson",
+              data: {
+                type: "Feature",
+                geometry: {
+                  type: "LineString",
+                  coordinates: [start, end],
+                },
+              },
+            },
+            layout: {
+              "line-join": "round",
+              "line-cap": "round",
+            },
+            paint: {
+              "line-color": color,
+              "line-width": 8,
+              "line-opacity": 0.85,
+            },
+          });
+        });
+      }
+
+      // Add a marker for current position (on top)
       if (coordinates.length > 0) {
-        markerRef.current = new mapboxgl.Marker({ color: "#3b82f6" })
+        markerRef.current = new mapboxgl.Marker({ color: "#6366f1", scale: 1.2 })
           .setLngLat(coordinates[0])
           .addTo(map.current);
       }
@@ -510,7 +554,16 @@ const Dashboard = () => {
           {/* Left Column */}
           <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
             {/* Map */}
-            <div ref={mapContainer} className="h-96 w-full"></div>
+            <div className="relative h-96 w-full ">
+              <div ref={mapContainer} className="absolute inset-0 h-full w-full z-0"></div>
+              {/* Floating color legend */}
+              <div className="absolute bottom-3 right-3 z-10 bg-white/90 text-black rounded shadow-lg px-4 py-2 text-xs flex flex-col space-y-1 border border-gray-200">
+                <div className="flex items-center gap-2"><span className="inline-block w-5 h-2 rounded bg-green-500"></span> Good</div>
+                <div className="flex items-center gap-2"><span className="inline-block w-5 h-2 rounded bg-orange-400"></span> Approaching Limit</div>
+                <div className="flex items-center gap-2"><span className="inline-block w-5 h-2 rounded bg-red-500"></span> Exceeds Limit</div>
+                <div className="flex items-center gap-2"><span className="inline-block w-5 h-2 rounded bg-yellow-300"></span> Under Maintenance</div>
+              </div>
+            </div>
           </div>
           {/* Roughness Chart */}
           <div className="p- w- h-full">
